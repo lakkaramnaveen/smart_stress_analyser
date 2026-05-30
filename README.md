@@ -1,10 +1,8 @@
-# 🎯 Composure v2.0 - Bio-Adaptive Workspace with Eye-Tracking Game
+# Composure - Bio-Adaptive Workspace with Eye-Tracking Game
 
 An advanced SwiftUI macOS application that combines **real-time stress monitoring**, **emotional intelligence**, **guided breathing therapy**, and an **interactive eye-tracking game** to help users maintain composure during high-stress situations like interviews, presentations, and deep work sessions.
 
 ---
-
-## ✨ What's New in v2.0
 
 ### 🫁 Enhanced Breathing Pacer
 - **Real-time Metrics Display**: Live heart rate and breathing rate during breathing cycles
