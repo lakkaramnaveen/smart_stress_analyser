@@ -26,16 +26,17 @@ final class AppModel: NSObject, ObservableObject, SmartSpectraRunnerDelegate {
     // MARK: - Bio-Feedback State
     @Published var isBiofeedbackActive: Bool = false
     @Published var stressScore: Double = 0.0
+    @Published var stressLevel: StressLevel = .calm // NEW: Better categorization
     
     // MARK: - Stress & Emotion Tracking
-    @Published var stressHistory: [Double] = [] // For graphing
+    @Published var stressHistory: [Double] = []
     @Published var stressTimestamps: [Date] = []
     @Published var emotionalState: EmotionalState = .calm
-    @Published var emotionIntensity: Double = 0.0 // 0.0 to 1.0
-    @Published var detectedEmotion: String = "Calm" // Human readable
+    @Published var emotionIntensity: Double = 0.0
+    @Published var detectedEmotion: String = "Calm"
     
     // MARK: - Eye Tracking
-    @Published var eyeGazeX: Double = 0.5 // 0.0 to 1.0 (normalized)
+    @Published var eyeGazeX: Double = 0.5
     @Published var eyeGazeY: Double = 0.5
     @Published var blinkDetected: Bool = false
     @Published var eyeTrackingConfidence: Double = 0.0
@@ -47,19 +48,35 @@ final class AppModel: NSObject, ObservableObject, SmartSpectraRunnerDelegate {
     @Published var balloonsPoppedInSession: Int = 0
     @Published var gameTime: Double = 0.0
     @Published var isGameActive: Bool = false
+    @Published var gameDifficulty: GameDifficulty = .medium // NEW
     
-    // Internal values for evaluation
+    // MARK: - Session Stats
+    @Published var sessionStartTime: Date?
+    @Published var totalSessionTime: Double = 0.0
+    @Published var highestStressInSession: Double = 0.0
+    @Published var averageStressInSession: Double = 0.0
+    
+    // MARK: - Eye Tracking Calibration
+    @Published var isCalibrating: Bool = false
+    @Published var calibrationPoints: [CGPoint] = []
+    
+    // Internal values
     private var currentNumericalEDA: Double = 0.0
     private var currentNumericalBreathing: Double = 0.0
     private var currentNumericalPulse: Double = 0.0
     
-    // Customizable Thresholds
+    // Customizable Thresholds - ADJUSTED FOR EXTREME STRESS ONLY
     private let edaStressThreshold: Double = 0.08
-    private let erraticBreathingThreshold: Double = 22.0 // breaths per minute
-    private let elevatedPulseThreshold: Double = 90.0 // bpm
+    private let erraticBreathingThreshold: Double = 22.0
+    private let elevatedPulseThreshold: Double = 90.0
     
-    private var stressHistoryMaxPoints = 300 // 5 minutes of data at 1 sample/sec
+    // FIXED: Increased threshold from 0.80 to 0.95 for extreme stress only
+    private let extremeStressThreshold: Double = 0.95
+    private let criticalStressThreshold: Double = 0.85
+    
+    private var stressHistoryMaxPoints = 300
     private var gameTimer: Timer?
+    private var sessionTimer: Timer?
 
     private let runner = SmartSpectraRunner()
 
@@ -89,9 +106,10 @@ final class AppModel: NSObject, ObservableObject, SmartSpectraRunnerDelegate {
         lastMetricTime = "never"
         diagnostics = "Frames: 0 | accepted: 0 | blocked: 0"
         
-        // Reset Bio-Feedback state on new session
+        // Reset session tracking
         isBiofeedbackActive = false
         stressScore = 0.0
+        stressLevel = .calm
         currentNumericalEDA = 0.0
         currentNumericalBreathing = 0.0
         currentNumericalPulse = 0.0
@@ -99,6 +117,12 @@ final class AppModel: NSObject, ObservableObject, SmartSpectraRunnerDelegate {
         stressTimestamps = []
         emotionalState = .calm
         emotionIntensity = 0.0
+        sessionStartTime = Date()
+        totalSessionTime = 0.0
+        highestStressInSession = 0.0
+        
+        // Start session timer
+        startSessionTimer()
         
         if let message = runner.start(withAPIKey: trimmedAPIKey) {
             errorMessage = message
@@ -114,19 +138,24 @@ final class AppModel: NSObject, ObservableObject, SmartSpectraRunnerDelegate {
         processingStatus = "stopped"
         isBiofeedbackActive = false
         stopGame()
+        stopSessionTimer()
     }
 
     // MARK: - SmartSpectraRunnerDelegate
     func smartSpectraRunnerDidUpdateFrame(_ image: NSImage) {
-        frame = image
+        DispatchQueue.main.async {
+            self.frame = image
+        }
     }
 
     func smartSpectraRunnerDidUpdateStatus(_ processing: String, validation: String) {
-        if !processing.isEmpty {
-            processingStatus = processing
-        }
-        if !validation.isEmpty {
-            validationStatus = validation
+        DispatchQueue.main.async {
+            if !processing.isEmpty {
+                self.processingStatus = processing
+            }
+            if !validation.isEmpty {
+                self.validationStatus = validation
+            }
         }
     }
 
@@ -136,44 +165,53 @@ final class AppModel: NSObject, ObservableObject, SmartSpectraRunnerDelegate {
         edaTrace: [NSNumber],
         timestampUs: Int64
     ) {
-        append(breathingTrace, to: \.breathingTraceHistory)
-        append(arterialPressureTrace, to: \.pulseTraceHistory)
-        append(edaTrace, to: \.edaTraceHistory, maxPoints: 1024)
-        updateEdaLevel(from: edaTrace)
-        
-        if !breathingTrace.isEmpty || !arterialPressureTrace.isEmpty || !edaTrace.isEmpty {
-            hasLiveMetrics = true
-            lastMetricTime = "\(timestampUs) us"
+        DispatchQueue.main.async {
+            self.append(breathingTrace, to: \.breathingTraceHistory)
+            self.append(arterialPressureTrace, to: \.pulseTraceHistory)
+            self.append(edaTrace, to: \.edaTraceHistory, maxPoints: 1024)
+            self.updateEdaLevel(from: edaTrace)
+            
+            if !breathingTrace.isEmpty || !arterialPressureTrace.isEmpty || !edaTrace.isEmpty {
+                self.hasLiveMetrics = true
+                self.lastMetricTime = "\(timestampUs) us"
+            }
         }
     }
 
     func smartSpectraRunnerDidUpdateMetrics(_ metrics: [String], timestampUs: Int64) {
         guard !metrics.isEmpty else { return }
 
-        updateVitalDisplays(from: metrics)
-        let tilePrefixes = ["Pulse rate:", "Breathing rate:", "EDA level:"]
-        self.metrics = metrics.filter { line in
-            !tilePrefixes.contains(where: line.hasPrefix)
+        DispatchQueue.main.async {
+            self.updateVitalDisplays(from: metrics)
+            let tilePrefixes = ["Pulse rate:", "Breathing rate:", "EDA level:"]
+            self.metrics = metrics.filter { line in
+                !tilePrefixes.contains(where: line.hasPrefix)
+            }
+            self.hasLiveMetrics = true
+            self.lastMetricTime = "\(timestampUs) us"
         }
-        hasLiveMetrics = true
-        lastMetricTime = "\(timestampUs) us"
     }
 
     func smartSpectraRunnerDidUpdateDiagnostics(_ diagnostics: String) {
-        self.diagnostics = diagnostics
+        DispatchQueue.main.async {
+            self.diagnostics = diagnostics
+        }
     }
 
     func smartSpectraRunnerDidFail(_ message: String) {
-        errorMessage = message
-        if isRunning {
-            stop()
+        DispatchQueue.main.async {
+            self.errorMessage = message
+            if self.isRunning {
+                self.stop()
+            }
+            self.processingStatus = "failed"
         }
-        processingStatus = "failed"
     }
 
     deinit {
         runner.stop()
         gameTimer?.invalidate()
+        sessionTimer?.invalidate()
     }
 
     // MARK: - Private Metric Parsers
@@ -241,13 +279,11 @@ final class AppModel: NSObject, ObservableObject, SmartSpectraRunnerDelegate {
             self[keyPath: confidenceKeyPath] = String(confidence)
         }
         
-        // Track breathing for composure
         if valueKeyPath == \AppModel.breathingRateText {
             currentNumericalBreathing = numericValue
             evaluateComposure()
         }
         
-        // Track pulse for emotional state
         if valueKeyPath == \AppModel.pulseRateText {
             currentNumericalPulse = numericValue
             evaluateComposure()
@@ -286,28 +322,41 @@ final class AppModel: NSObject, ObservableObject, SmartSpectraRunnerDelegate {
         
         stressScore = (edaFactor + breathFactor) / 2.0
         
-        // Record stress history for graphing
+        // Update stress level
+        updateStressLevel()
+        
+        // Record stress history
         recordStressDataPoint(stressScore)
         
-        // Determine emotional state
+        // Update emotional state
         updateEmotionalState()
         
-        // Trigger biofeedback if stress is too high
-        if stressScore > 0.80 && !isBiofeedbackActive {
+        // FIXED: Only trigger at extreme stress (0.95+) instead of 0.80
+        if stressScore > extremeStressThreshold && !isBiofeedbackActive {
             triggerBiofeedback()
         }
     }
     
+    private func updateStressLevel() {
+        if stressScore < 0.3 {
+            stressLevel = .calm
+        } else if stressScore < 0.6 {
+            stressLevel = .moderate
+        } else if stressScore < 0.85 {
+            stressLevel = .elevated
+        } else {
+            stressLevel = .critical
+        }
+    }
+    
     private func updateEmotionalState() {
-        // Map vital signs to emotional states
-        let pulseNormalized = min(currentNumericalPulse / 120.0, 1.0) // 120 bpm max
+        let pulseNormalized = min(currentNumericalPulse / 120.0, 1.0)
         let edaNormalized = min(abs(currentNumericalEDA) / 0.1, 1.0)
         let breathingNormalized = min(currentNumericalBreathing / 25.0, 1.0)
         
         let emotionScore = (pulseNormalized + edaNormalized + breathingNormalized) / 3.0
         emotionIntensity = emotionScore
         
-        // Classify emotion based on vitals
         if emotionScore < 0.3 {
             emotionalState = .calm
             detectedEmotion = "Calm"
@@ -337,6 +386,15 @@ final class AppModel: NSObject, ObservableObject, SmartSpectraRunnerDelegate {
         
         stressHistory = history
         stressTimestamps = timestamps
+        
+        // Update session stats
+        if value > highestStressInSession {
+            highestStressInSession = value
+        }
+        
+        if !history.isEmpty {
+            averageStressInSession = history.reduce(0, +) / Double(history.count)
+        }
     }
 
     private func triggerBiofeedback() {
@@ -349,12 +407,24 @@ final class AppModel: NSObject, ObservableObject, SmartSpectraRunnerDelegate {
         }
     }
     
-    // MARK: - Eye Tracking Simulation
+    // MARK: - Session Management
+    private func startSessionTimer() {
+        sessionTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            self?.totalSessionTime += 1.0
+        }
+    }
+    
+    private func stopSessionTimer() {
+        sessionTimer?.invalidate()
+        sessionTimer = nil
+    }
+    
+    // MARK: - Eye Tracking
     func updateEyeGaze(x: Double, y: Double, confidence: Double) {
         DispatchQueue.main.async {
-            self.eyeGazeX = x
-            self.eyeGazeY = y
-            self.eyeTrackingConfidence = confidence
+            self.eyeGazeX = max(0.0, min(1.0, x))
+            self.eyeGazeY = max(0.0, min(1.0, y))
+            self.eyeTrackingConfidence = max(0.0, min(1.0, confidence))
         }
     }
     
@@ -367,9 +437,28 @@ final class AppModel: NSObject, ObservableObject, SmartSpectraRunnerDelegate {
         }
     }
     
+    // MARK: - Eye Tracking Calibration
+    func startCalibration() {
+        isCalibrating = true
+        calibrationPoints = []
+    }
+    
+    func recordCalibrationPoint() {
+        calibrationPoints.append(CGPoint(x: eyeGazeX, y: eyeGazeY))
+        if calibrationPoints.count >= 5 {
+            finishCalibration()
+        }
+    }
+    
+    func finishCalibration() {
+        isCalibrating = false
+        // Calibration data stored in calibrationPoints
+    }
+    
     // MARK: - Game Controls
-    func startGame(mode: GameMode) {
+    func startGame(mode: GameMode, difficulty: GameDifficulty = .medium) {
         gameMode = mode
+        gameDifficulty = difficulty
         gameScore = 0
         balloonsPoppedInSession = 0
         gameTime = 0.0
@@ -387,7 +476,7 @@ final class AppModel: NSObject, ObservableObject, SmartSpectraRunnerDelegate {
     }
     
     func recordBalloonPop() {
-        gameScore += 10
+        gameScore += (Int(gameDifficulty.pointMultiplier) * 10)
         balloonsPoppedInSession += 1
     }
 }
@@ -396,6 +485,79 @@ final class AppModel: NSObject, ObservableObject, SmartSpectraRunnerDelegate {
 enum GameMode {
     case none
     case balloonHunt
+}
+
+enum GameDifficulty: CustomStringConvertible {
+    case easy
+    case medium
+    case hard
+    case extreme
+    
+    var description: String {
+        switch self {
+        case .easy: return "Easy"
+        case .medium: return "Medium"
+        case .hard: return "Hard"
+        case .extreme: return "Extreme"
+        }
+    }
+    
+    // ... keep your existing balloonSpawnInterval, balloonVelocityRange, etc.
+    var balloonSpawnInterval: TimeInterval {
+        switch self {
+        case .easy: return 1.2
+        case .medium: return 0.8
+        case .hard: return 0.5
+        case .extreme: return 0.3
+        }
+    }
+    
+    var balloonVelocityRange: ClosedRange<CGFloat> {
+        switch self {
+        case .easy: return 30...50
+        case .medium: return 40...80
+        case .hard: return 60...120
+        case .extreme: return 100...180
+        }
+    }
+    
+    var pointMultiplier: Double {
+        switch self {
+        case .easy: return 1.0
+        case .medium: return 1.5
+        case .hard: return 2.5
+        case .extreme: return 5.0
+        }
+    }
+}
+
+enum StressLevel {
+    case calm
+    case moderate
+    case elevated
+    case critical
+    
+    var color: Color {
+        switch self {
+        case .calm:
+            return Color(red: 0.40, green: 0.85, blue: 0.55) // mint
+        case .moderate:
+            return Color(red: 0.31, green: 0.80, blue: 0.77) // teal
+        case .elevated:
+            return Color(red: 1.0, green: 0.82, blue: 0.35) // amber
+        case .critical:
+            return Color(red: 1.0, green: 0.42, blue: 0.42) // coral
+        }
+    }
+    
+    var description: String {
+        switch self {
+        case .calm: return "Calm"
+        case .moderate: return "Moderate"
+        case .elevated: return "Elevated"
+        case .critical: return "Critical"
+        }
+    }
 }
 
 enum EmotionalState {
@@ -407,13 +569,13 @@ enum EmotionalState {
     var color: Color {
         switch self {
         case .calm:
-            return Color(red: 0.40, green: 0.85, blue: 0.55) // mint
+            return Color(red: 0.40, green: 0.85, blue: 0.55)
         case .focused:
-            return Color(red: 0.31, green: 0.80, blue: 0.77) // teal
+            return Color(red: 0.31, green: 0.80, blue: 0.77)
         case .anxious:
-            return Color(red: 1.0, green: 0.82, blue: 0.35) // yellow
+            return Color(red: 1.0, green: 0.82, blue: 0.35)
         case .stressed:
-            return Color(red: 1.0, green: 0.42, blue: 0.42) // coral
+            return Color(red: 1.0, green: 0.42, blue: 0.42)
         }
     }
 }
