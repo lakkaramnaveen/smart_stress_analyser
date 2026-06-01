@@ -9,6 +9,7 @@ struct BreathingPacerView: View {
     @State private var instruction: String = "Get Ready..."
     @State private var timer: Timer?
     @State private var breathCycleProgress: Double = 0.0
+    @State private var cycleCount: Int = 0
 
     private let brandTeal = Color(red: 0.31, green: 0.80, blue: 0.77)
     private let brandMint = Color(red: 0.40, green: 0.85, blue: 0.55)
@@ -16,27 +17,63 @@ struct BreathingPacerView: View {
 
     var body: some View {
         ZStack {
-            // Glassy background
+            // Glassy background with blur
             Rectangle()
                 .fill(.ultraThinMaterial)
                 .ignoresSafeArea()
                 .opacity(0.92)
             
             VStack(spacing: 32) {
-                // Header
+                // Header with critical stress indicator
                 VStack(spacing: 8) {
-                    Text("Composure Lost.")
-                        .font(.title2.weight(.bold))
-                        .foregroundStyle(.white)
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.circle.fill")
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundStyle(coral)
+                        
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text("Critical Stress Alert")
+                                .font(.title2.weight(.bold))
+                                .foregroundStyle(.white)
+                            
+                            Text("Extreme stress detected - immediate intervention needed")
+                                .font(.caption)
+                                .foregroundStyle(.white.opacity(0.7))
+                        }
+                    }
                     
-                    Text("Let's bring your heart rate back down.")
-                        .font(.callout)
-                        .foregroundStyle(.white.opacity(0.7))
+                    // Current stress display
+                    HStack(spacing: 12) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Stress Level")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.white.opacity(0.7))
+                            
+                            Text(String(format: "%.0f%%", model.stressScore * 100))
+                                .font(.title2.weight(.bold))
+                                .foregroundStyle(coral)
+                        }
+                        
+                        Spacer()
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Emotional State")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.white.opacity(0.7))
+                            
+                            Text(model.detectedEmotion)
+                                .font(.title3.weight(.bold))
+                                .foregroundStyle(model.emotionalState.color)
+                        }
+                    }
+                    .padding(12)
+                    .background(Color.white.opacity(0.04))
+                    .cornerRadius(8)
                 }
                 
                 // Main Breathing Orb with Metrics
                 ZStack {
-                    // Background glow layers
+                    // Outer glow layers
                     Circle()
                         .fill(brandTeal.opacity(0.3))
                         .frame(width: 280, height: 280)
@@ -87,86 +124,113 @@ struct BreathingPacerView: View {
                 .opacity(opacity)
                 .frame(height: 320)
                 
-                // Breath Cycle Progress Bar
-                VStack(spacing: 8) {
+                // Breathing metrics
+                VStack(spacing: 12) {
+                    // Breath Cycle Progress Bar
+                    VStack(spacing: 8) {
+                        HStack {
+                            Text("Breath Cycle")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.white)
+                            Spacer()
+                            Text("\(Int(breathCycleProgress * 100))%")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(brandTeal)
+                        }
+                        
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(Color.white.opacity(0.1))
+                            
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(
+                                    LinearGradient(
+                                        gradient: Gradient(colors: [brandMint, brandTeal]),
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                )
+                                .frame(width: max(0, 280 * breathCycleProgress))
+                        }
+                        .frame(height: 6)
+                        .frame(maxWidth: 280)
+                    }
+                    
+                    // Stress Level Reduction Indicator
+                    VStack(spacing: 6) {
+                        HStack {
+                            Text("Stress Reduction")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.white)
+                            Spacer()
+                            Text(String(format: "%.1f%%", model.stressScore * 100))
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(model.emotionalState.color)
+                        }
+                        
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(Color.white.opacity(0.1))
+                            
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(model.emotionalState.color)
+                                .frame(width: max(0, 280 * model.stressScore))
+                        }
+                        .frame(height: 6)
+                        .frame(maxWidth: 280)
+                        
+                        HStack(spacing: 8) {
+                            Circle()
+                                .fill(model.emotionalState.color)
+                                .frame(width: 8, height: 8)
+                            
+                            Text(model.detectedEmotion)
+                                .font(.caption)
+                                .foregroundStyle(.white.opacity(0.8))
+                            
+                            Spacer()
+                        }
+                    }
+                    
+                    // Cycle counter
                     HStack {
-                        Text("Breath Cycle")
+                        Text("Breathing Cycles")
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(.white.opacity(0.7))
+                        
                         Spacer()
-                        Text("\(Int(breathCycleProgress * 100))%")
+                        
+                        Text("\(cycleCount) / 6")
                             .font(.caption.weight(.bold))
                             .foregroundStyle(brandTeal)
-                    }
-                    
-                    ZStack(alignment: .leading) {
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(Color.white.opacity(0.1))
-                        
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(
-                                LinearGradient(
-                                    gradient: Gradient(colors: [brandMint, brandTeal]),
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                )
-                            )
-                            .frame(width: max(0, 280 * breathCycleProgress))
-                    }
-                    .frame(height: 6)
-                    .frame(maxWidth: 280)
-                }
-                .padding(.horizontal, 20)
-                
-                // Stress Level Indicator
-                VStack(spacing: 6) {
-                    HStack {
-                        Text("Stress Level")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.white)
-                        Spacer()
-                        Text(String(format: "%.1f%%", model.stressScore * 100))
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(model.emotionalState.color)
-                    }
-                    
-                    ZStack(alignment: .leading) {
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(Color.white.opacity(0.1))
-                        
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(model.emotionalState.color)
-                            .frame(width: max(0, 280 * model.stressScore))
-                    }
-                    .frame(height: 6)
-                    .frame(maxWidth: 280)
-                    
-                    HStack(spacing: 8) {
-                        Circle()
-                            .fill(model.emotionalState.color)
-                            .frame(width: 8, height: 8)
-                        
-                        Text(model.detectedEmotion)
-                            .font(.caption)
-                            .foregroundStyle(.white.opacity(0.8))
-                        
-                        Spacer()
                     }
                 }
                 .padding(.horizontal, 20)
                 
                 Spacer()
                 
-                // Action Button
-                Button(action: { stopBreathingCycle() }) {
-                    Text("Resume Session")
-                        .font(.body.weight(.semibold))
-                        .frame(maxWidth: .infinity)
-                        .padding(12)
-                        .background(Color.white.opacity(0.15))
-                        .cornerRadius(8)
+                // Action Buttons
+                HStack(spacing: 12) {
+                    Button(action: { stopBreathingCycle() }) {
+                        Text("Exit Pacer")
+                            .font(.body.weight(.semibold))
+                            .frame(maxWidth: .infinity)
+                            .padding(12)
+                            .background(Color.white.opacity(0.15))
+                            .cornerRadius(8)
+                    }
+                    .tint(.white)
+                    
+                    Button(action: { resetCycles() }) {
+                        Text("Reset Cycles")
+                            .font(.body.weight(.semibold))
+                            .frame(maxWidth: .infinity)
+                            .padding(12)
+                            .background(brandTeal.opacity(0.3))
+                            .cornerRadius(8)
+                    }
+                    .tint(brandTeal)
                 }
-                .tint(.white)
                 .padding(.horizontal, 20)
                 .padding(.bottom, 20)
             }
@@ -181,6 +245,7 @@ struct BreathingPacerView: View {
     
     // MARK: - Animation Engine
     private func startBreathingCycle() {
+        cycleCount = 0
         performBreath()
         timer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: true) { _ in
             performBreath()
@@ -188,6 +253,8 @@ struct BreathingPacerView: View {
     }
     
     private func performBreath() {
+        cycleCount += 1
+        
         // Inhale (4 seconds)
         withAnimation(.easeInOut(duration: 4.0)) {
             scale = 1.2
@@ -209,7 +276,19 @@ struct BreathingPacerView: View {
         // Reset for next cycle
         DispatchQueue.main.asyncAfter(deadline: .now() + 10.0) {
             breathCycleProgress = 0.0
+            
+            // Auto-exit after 6 cycles (60 seconds)
+            if cycleCount >= 6 {
+                stopBreathingCycle()
+            }
         }
+    }
+    
+    private func resetCycles() {
+        timer?.invalidate()
+        cycleCount = 0
+        breathCycleProgress = 0.0
+        startBreathingCycle()
     }
     
     private func stopBreathingCycle() {
