@@ -1,6 +1,5 @@
 import SwiftUI
 
-// MARK: - Application Modes
 enum ComposureMode: String, CaseIterable {
     case focus = "Focus Guardian"
     case pitch = "Pitch Coach"
@@ -14,14 +13,10 @@ enum SidebarTab: String, CaseIterable {
     
     var icon: String {
         switch self {
-        case .controls:
-            return "gear"
-        case .stress:
-            return "chart.line.uptrend.xyaxis"
-        case .emotions:
-            return "brain.head.profile"
-        case .game:
-            return "gamecontroller.fill"
+        case .controls: return "gear"
+        case .stress: return "chart.line.uptrend.xyaxis"
+        case .emotions: return "brain.head.profile"
+        case .game: return "gamecontroller.fill"
         }
     }
 }
@@ -32,7 +27,6 @@ struct ContentView: View {
     @State private var activeSidebarTab: SidebarTab = .controls
     @State private var showGameFullscreen: Bool = false
 
-    // Brand Colors
     private let coral = Color(red: 1.0, green: 0.42, blue: 0.42)
     private let teal = Color(red: 0.31, green: 0.80, blue: 0.77)
     private let mint = Color(red: 0.40, green: 0.85, blue: 0.55)
@@ -55,7 +49,7 @@ struct ContentView: View {
                     .zIndex(1000)
             }
             
-            // Breathing pacer overlay
+            // Breathing pacer overlay (only at critical stress)
             if model.isBiofeedbackActive {
                 BreathingPacerView(isActive: $model.isBiofeedbackActive)
                     .environmentObject(model)
@@ -86,7 +80,10 @@ struct ContentView: View {
                 HStack {
                     validationPill
                     Spacer()
-                    modeIndicator
+                    HStack(spacing: 8) {
+                        modeIndicator
+                        stressLevelIndicator
+                    }
                 }
                 .padding(18)
 
@@ -157,7 +154,7 @@ struct ContentView: View {
     
     private var controlsPanel: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: 20) {
                 // Header
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Composure")
@@ -179,6 +176,37 @@ struct ContentView: View {
                     .pickerStyle(.segmented)
                 }
 
+                // Stress Level Information
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Stress Status")
+                        .font(.headline)
+                    
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Level")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.white.opacity(0.7))
+                            Text(model.stressLevel.description)
+                                .font(.callout.weight(.bold))
+                                .foregroundStyle(model.stressLevel.color)
+                        }
+                        
+                        Spacer()
+                        
+                        VStack(alignment: .trailing, spacing: 4) {
+                            Text("Score")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.white.opacity(0.7))
+                            Text(String(format: "%.0f%%", model.stressScore * 100))
+                                .font(.callout.weight(.bold))
+                                .foregroundStyle(model.stressLevel.color)
+                        }
+                    }
+                    .padding(12)
+                    .background(Color.white.opacity(0.04))
+                    .cornerRadius(8)
+                }
+
                 // Authentication
                 VStack(alignment: .leading, spacing: 8) {
                     Text("SmartSpectra API")
@@ -188,7 +216,7 @@ struct ContentView: View {
                 }
 
                 // Engine Controls
-                HStack {
+                HStack(spacing: 12) {
                     Button(action: { model.start() }) {
                         Label(activeMode == .pitch ? "Start Session" : "Enable Tracking", systemImage: "play.fill")
                             .frame(maxWidth: .infinity)
@@ -205,9 +233,51 @@ struct ContentView: View {
                     .disabled(!model.isRunning)
                 }
 
+                // Error Display
                 if !model.errorMessage.isEmpty {
-                    Text(model.errorMessage)
-                        .font(.callout).foregroundStyle(.red)
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Image(systemName: "exclamationmark.circle.fill")
+                                .foregroundStyle(.red)
+                            Text("Error")
+                                .font(.caption.weight(.semibold))
+                        }
+                        Text(model.errorMessage)
+                            .font(.caption)
+                    }
+                    .padding(8)
+                    .background(Color.red.opacity(0.1))
+                    .cornerRadius(6)
+                }
+
+                // Session Info
+                if model.isRunning {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Session Stats")
+                            .font(.headline)
+                        
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Duration")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.white.opacity(0.7))
+                                Text(formatTime(model.totalSessionTime))
+                                    .font(.caption.weight(.bold))
+                            }
+                            Spacer()
+                            VStack(alignment: .trailing, spacing: 4) {
+                                Text("Peak Stress")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.white.opacity(0.7))
+                                Text(String(format: "%.0f%%", model.highestStressInSession * 100))
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(coral)
+                            }
+                        }
+                        .padding(8)
+                        .background(Color.white.opacity(0.04))
+                        .cornerRadius(6)
+                    }
                 }
 
                 Spacer(minLength: 0)
@@ -218,6 +288,28 @@ struct ContentView: View {
     
     private var gamePanel: some View {
         VStack(spacing: 16) {
+            // Game Difficulty Selection
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Difficulty")
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(.white)
+                
+                HStack(spacing: 8) {
+                    ForEach([GameDifficulty.easy, .medium, .hard, .extreme], id: \.self) { difficulty in
+                        let isSelected = model.gameDifficulty == difficulty
+                        Button(action: { model.gameDifficulty = difficulty }) {
+                            Text(difficultyLabel(difficulty))
+                                .font(.caption.weight(.semibold))
+                                .frame(maxWidth: .infinity)
+                                .padding(8)
+                                .background(isSelected ? Color(red: 0.31, green: 0.80, blue: 0.77) : Color.white.opacity(0.1))
+                                .cornerRadius(6)
+                        }
+                        .foregroundStyle(.white)
+                    }
+                }
+            }
+            
             // Game Stats Summary
             VStack(spacing: 12) {
                 HStack {
@@ -237,35 +329,9 @@ struct ContentView: View {
                     .opacity(0.1)
                 
                 VStack(spacing: 12) {
-                    HStack {
-                        Label("Balloons Popped", systemImage: "balloon.fill")
-                            .font(.callout)
-                            .foregroundStyle(.white.opacity(0.8))
-                        Spacer()
-                        Text("\(model.balloonsPoppedInSession)")
-                            .font(.callout.weight(.bold))
-                            .foregroundStyle(coral)
-                    }
-                    
-                    HStack {
-                        Label("Current Score", systemImage: "star.fill")
-                            .font(.callout)
-                            .foregroundStyle(.white.opacity(0.8))
-                        Spacer()
-                        Text("\(model.gameScore)")
-                            .font(.callout.weight(.bold))
-                            .foregroundStyle(mint)
-                    }
-                    
-                    HStack {
-                        Label("Game Time", systemImage: "timer")
-                            .font(.callout)
-                            .foregroundStyle(.white.opacity(0.8))
-                        Spacer()
-                        Text(formatGameTime(model.gameTime))
-                            .font(.callout.weight(.bold))
-                            .foregroundStyle(teal)
-                    }
+                    StatsRow(icon: "balloon.fill", label: "Balloons Popped", value: "\(model.balloonsPoppedInSession)", color: coral)
+                    StatsRow(icon: "star.fill", label: "Current Score", value: "\(model.gameScore)", color: mint)
+                    StatsRow(icon: "timer", label: "Game Time", value: formatTime(model.gameTime), color: teal)
                 }
             }
             .padding(12)
@@ -299,7 +365,6 @@ struct ContentView: View {
                 .background(Color.white.opacity(0.05))
                 .cornerRadius(6)
                 
-                // Blink indicator
                 HStack {
                     Image(systemName: "eyes")
                         .font(.system(size: 12, weight: .semibold))
@@ -329,11 +394,8 @@ struct ContentView: View {
             Divider()
                 .opacity(0.1)
             
-            // Start Game Button
-            // Start Game Button
-            Button(action: {
-                showGameFullscreen = true
-            }) {
+            // Start Game Button - FIXED
+            Button(action: { showGameFullscreen = true }) {
                 HStack(spacing: 8) {
                     Image(systemName: "gamecontroller.fill")
                     Text("Launch Balloon Hunt")
@@ -341,16 +403,17 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity)
                 .padding(12)
                 .background(
-                    LinearGradient(
-                        colors: [mint.opacity(0.8), teal.opacity(0.8)],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(
+                            LinearGradient(
+                                gradient: Gradient(colors: [mint.opacity(0.8), teal.opacity(0.8)]),
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
                 )
-                .foregroundStyle(.white)
-                .cornerRadius(8)
-                .font(.system(.body, weight: .semibold))
             }
+            .disabled(!model.isRunning)
             
             // Instructions
             VStack(alignment: .leading, spacing: 8) {
@@ -387,7 +450,7 @@ struct ContentView: View {
                             .foregroundStyle(mint)
                             .frame(width: 20)
                         
-                        Text("Earn points for each pop")
+                        Text("Earn points (more in higher difficulty)")
                             .font(.caption)
                             .foregroundStyle(.white.opacity(0.7))
                     }
@@ -408,9 +471,25 @@ struct ContentView: View {
     private var focusMetricsOverlay: some View {
         VStack(spacing: 12) {
             HStack(spacing: 12) {
-                VitalTile(title: "Cognitive Load (Breathing)", value: model.breathingRateText, unit: "brpm", confidence: model.breathingConfidenceText, icon: "wind", color: mint, points: model.breathingTraceHistory)
+                VitalTile(
+                    title: "Cognitive Load",
+                    value: model.breathingRateText,
+                    unit: "brpm",
+                    confidence: model.breathingConfidenceText,
+                    icon: "wind",
+                    color: mint,
+                    points: model.breathingTraceHistory
+                )
                 
-                VitalTile(title: "Heart Rate", value: model.pulseRateText, unit: "bpm", confidence: model.pulseConfidenceText, icon: "heart.fill", color: coral, points: model.pulseTraceHistory.isEmpty ? model.pulseRateTrendHistory : model.pulseTraceHistory)
+                VitalTile(
+                    title: "Heart Rate",
+                    value: model.pulseRateText,
+                    unit: "bpm",
+                    confidence: model.pulseConfidenceText,
+                    icon: "heart.fill",
+                    color: coral,
+                    points: model.pulseTraceHistory.isEmpty ? model.pulseRateTrendHistory : model.pulseTraceHistory
+                )
             }
         }
         .padding(18)
@@ -419,7 +498,15 @@ struct ContentView: View {
 
     private var pitchCoachOverlay: some View {
         VStack(spacing: 12) {
-            VitalTile(title: "Stress Under Pressure (EDA)", value: model.edaLevelText, unit: "", confidence: "", icon: "waveform.path.ecg", color: teal, points: model.edaTraceHistory)
+            VitalTile(
+                title: "Stress Response",
+                value: model.edaLevelText,
+                unit: "µS",
+                confidence: "",
+                icon: "waveform.path.ecg",
+                color: teal,
+                points: model.edaTraceHistory
+            )
         }
         .padding(18)
         .background(gradientBackdrop)
@@ -449,20 +536,42 @@ struct ContentView: View {
             .padding(.horizontal, 12).padding(.vertical, 6)
             .background(teal, in: Capsule())
     }
+    
+    private var stressLevelIndicator: some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(model.stressLevel.color)
+                .frame(width: 8, height: 8)
+            
+            Text(model.stressLevel.description)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.white)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 6)
+        .background(model.stressLevel.color.opacity(0.2), in: Capsule())
+    }
 
     private var gradientBackdrop: some View {
         LinearGradient(colors: [.clear, .black.opacity(0.8), .black], startPoint: .top, endPoint: .bottom)
     }
     
-    private func formatGameTime(_ seconds: Double) -> String {
+    private func formatTime(_ seconds: Double) -> String {
         let mins = Int(seconds) / 60
         let secs = Int(seconds) % 60
         return String(format: "%02d:%02d", mins, secs)
     }
+    
+    private func difficultyLabel(_ difficulty: GameDifficulty) -> String {
+        switch difficulty {
+        case .easy: return "Easy"
+        case .medium: return "Medium"
+        case .hard: return "Hard"
+        case .extreme: return "Extreme"
+        }
+    }
 }
 
-
-// MARK: - Supporting UI Components
+// MARK: - Supporting Components
 
 struct VitalTile: View {
     let title: String
@@ -570,5 +679,31 @@ struct SparklinePath: Shape {
             }
         }
         return path
+    }
+}
+
+struct StatsRow: View {
+    let icon: String
+    let label: String
+    let value: String
+    let color: Color
+    
+    var body: some View {
+        HStack {
+            Image(systemName: icon)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(color)
+                .frame(width: 16)
+            
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.white.opacity(0.8))
+            
+            Spacer()
+            
+            Text(value)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(color)
+        }
     }
 }
