@@ -1,139 +1,160 @@
 import SwiftUI
 
-struct EmotionalDetectorView: View {
+struct StressVisualizationView: View {
     @EnvironmentObject private var model: AppModel
     
-    private let emotions: [(name: String, icon: String, state: EmotionalState)] = [
-        ("Calm", "leaf", .calm),
-        ("Focused", "target", .focused),
-        ("Anxious", "exclamationmark.circle", .anxious),
-        ("Stressed", "flame", .stressed)
-    ]
-    
+    private let teal = Color(red: 0.31, green: 0.80, blue: 0.77)
+    private let mint = Color(red: 0.40, green: 0.85, blue: 0.55)
+    private let coral = Color(red: 1.0, green: 0.42, blue: 0.42)
+    private let amber = Color(red: 1.0, green: 0.82, blue: 0.35)
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             // Header
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Emotional State")
-                    .font(.headline.weight(.semibold))
-                    .foregroundStyle(.white)
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Stress Trajectory")
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(.white)
+                    
+                    Text("Last 5 minutes of data")
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.6))
+                }
                 
-                Text("Real-time analysis from vitals")
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.6))
+                Spacer()
+                
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text("Current")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.7))
+                    
+                    Text(String(format: "%.1f%%", model.stressScore * 100))
+                        .font(.title3.weight(.bold))
+                        .foregroundStyle(stressColor)
+                }
             }
             
-            // Main Emotion Display
-            VStack(spacing: 12) {
-                // Large emotion indicator
-                ZStack {
-                    Circle()
-                        .fill(model.emotionalState.color.opacity(0.15))
-                        .frame(width: 160, height: 160)
-                    
-                    Circle()
-                        .stroke(model.emotionalState.color.opacity(0.3), lineWidth: 2)
-                        .frame(width: 160, height: 160)
-                    
-                    VStack(spacing: 8) {
-                        Image(systemName: iconForEmotion(model.emotionalState))
-                            .font(.system(size: 48, weight: .semibold))
-                            .foregroundStyle(model.emotionalState.color)
-                        
-                        Text(model.detectedEmotion)
-                            .font(.title3.weight(.bold))
-                            .foregroundStyle(.white)
-                    }
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
+            // Stress Level Category
+            HStack {
+                Image(systemName: stressLevelIcon)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(stressColor)
                 
-                // Intensity bar
-                VStack(spacing: 6) {
-                    HStack {
-                        Text("Intensity")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.white.opacity(0.8))
-                        Spacer()
-                        Text(String(format: "%.0f%%", model.emotionIntensity * 100))
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(model.emotionalState.color)
-                    }
-                    
-                    ZStack(alignment: .leading) {
-                        RoundedRectangle(cornerRadius: 3)
-                            .fill(Color.white.opacity(0.1))
-                        
-                        RoundedRectangle(cornerRadius: 3)
-                            .fill(model.emotionalState.color)
-                            .frame(width: max(0, 220 * model.emotionIntensity))
-                    }
-                    .frame(height: 6)
-                    .frame(maxWidth: 220)
-                }
-                .padding(.horizontal, 16)
-                
-                // Vital signs summary
-                HStack(spacing: 12) {
-                    VitalIndicator(
-                        icon: "heart.fill",
-                        label: "Heart",
-                        value: model.pulseRateText,
-                        unit: "bpm"
-                    )
-                    
-                    VitalIndicator(
-                        icon: "wind",
-                        label: "Breath",
-                        value: model.breathingRateText,
-                        unit: "rpm"
-                    )
-                    
-                    VitalIndicator(
-                        icon: "waveform.path.ecg",
-                        label: "EDA",
-                        value: model.edaLevelText,
-                        unit: ""
-                    )
-                }
-                .padding(.horizontal, 12)
-            }
-            .padding(.horizontal, 12)
-            .background(Color.white.opacity(0.04))
-            .cornerRadius(12)
-            
-            // Emotion Scale
-            VStack(spacing: 10) {
-                Text("Emotional Spectrum")
+                Text(model.stressLevel.description)
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(stressColor)
                 
-                HStack(spacing: 8) {
-                    ForEach(emotions, id: \.name) { emotion in
-                        EmotionCard(
-                            icon: emotion.icon,
-                            label: emotion.name,
-                            isActive: model.emotionalState == emotion.state,
-                            color: emotion.state.color
-                        )
+                Spacer()
+            }
+            
+            // Graph
+            ZStack(alignment: .bottomLeading) {
+                // Background gradient
+                LinearGradient(
+                    gradient: Gradient(colors: [
+                        Color.clear,
+                        stressColor.opacity(0.15)
+                    ]),
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .frame(height: 180)
+                .cornerRadius(12)
+                
+                // Grid lines
+                VStack(spacing: 0) {
+                    ForEach(0..<5, id: \.self) { _ in
+                        Divider()
+                            .opacity(0.1)
+                        Spacer()
                     }
                 }
+                .frame(height: 180)
+                
+                // Data path
+                if model.stressHistory.count > 1 {
+                    StressGraph(data: model.stressHistory, color: stressColor)
+                        .frame(height: 180)
+                } else {
+                    VStack {
+                        Spacer()
+                        Text("Collecting data...")
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.5))
+                        Spacer()
+                    }
+                }
+                
+                // Y-axis labels
+                VStack(alignment: .trailing, spacing: 0) {
+                    Text("100%")
+                        .font(.system(size: 9, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.4))
+                    
+                    Spacer()
+                    
+                    Text("50%")
+                        .font(.system(size: 9, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.4))
+                    
+                    Spacer()
+                    
+                    Text("0%")
+                        .font(.system(size: 9, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.4))
+                }
+                .frame(height: 180)
+                .padding(.trailing, -25)
             }
-            .padding(.horizontal, 12)
+            .frame(height: 180)
+            .padding(.horizontal, 20)
             
-            // Analysis Text
+            // Statistics Row
+            HStack(spacing: 12) {
+                StatsCard(
+                    icon: "arrow.up",
+                    label: "Peak",
+                    value: String(format: "%.0f%%", (model.stressHistory.max() ?? 0) * 100),
+                    color: coral
+                )
+                
+                StatsCard(
+                    icon: "line.3.horizontal",
+                    label: "Average",
+                    value: String(format: "%.0f%%", averageStress),
+                    color: teal
+                )
+                
+                StatsCard(
+                    icon: "arrow.down",
+                    label: "Min",
+                    value: String(format: "%.0f%%", (model.stressHistory.min() ?? 0) * 100),
+                    color: mint
+                )
+                
+                StatsCard(
+                    icon: "bolt.fill",
+                    label: "Trend",
+                    value: trendDirection,
+                    color: trendColor
+                )
+            }
+            .padding(.horizontal, 20)
+            
+            // AI Insights
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 8) {
-                    Image(systemName: "brain")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(model.emotionalState.color)
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(teal)
                     
-                    Text("Analysis")
+                    Text("AI Insight")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.white)
                 }
                 
-                Text(emotionalAnalysis)
+                Text(stressInsight)
                     .font(.caption)
                     .foregroundStyle(.white.opacity(0.8))
                     .lineLimit(4)
@@ -141,122 +162,171 @@ struct EmotionalDetectorView: View {
             .padding(12)
             .background(Color.white.opacity(0.06))
             .cornerRadius(8)
-            .padding(.horizontal, 12)
-            
-            Spacer(minLength: 0)
+            .padding(.horizontal, 20)
+            .padding(.bottom, 8)
         }
         .padding(.vertical, 16)
-        .padding(.horizontal, 4)
         .background(Color.white.opacity(0.03))
         .cornerRadius(12)
     }
     
-    private func iconForEmotion(_ state: EmotionalState) -> String {
-        switch state {
+    private var stressColor: Color {
+        switch model.stressLevel {
         case .calm:
-            return "leaf"
-        case .focused:
-            return "target"
-        case .anxious:
-            return "exclamationmark.circle"
-        case .stressed:
-            return "flame"
+            return mint
+        case .moderate:
+            return teal
+        case .elevated:
+            return amber
+        case .critical:
+            return coral
         }
     }
     
-    private var emotionalAnalysis: String {
-        let emotion = model.emotionalState
-        let intensity = model.emotionIntensity
-        
-        switch emotion {
+    private var stressLevelIcon: String {
+        switch model.stressLevel {
         case .calm:
-            if intensity < 0.3 {
-                return "Excellent baseline composure. You're well-rested and centered. Maintain this state."
-            } else {
-                return "Good emotional balance. You're managing stress effectively with stable vitals."
-            }
-            
-        case .focused:
-            if intensity < 0.5 {
-                return "Healthy engagement detected. Your attention is sharp and your body is responsive."
-            } else {
-                return "Deep focus mode active. Channel this energy into your current task."
-            }
-            
-        case .anxious:
-            if intensity < 0.65 {
-                return "Mild stress present. Consider a brief pause or use the breathing pacer to reset."
-            } else {
-                return "Noticeable anxiety. Take a moment for guided breathing to help regulate your system."
-            }
-            
-        case .stressed:
-            return "High stress alert. Your body is in fight-or-flight mode. Use the breathing pacer now."
+            return "leaf.fill"
+        case .moderate:
+            return "ellipsis"
+        case .elevated:
+            return "exclamationmark"
+        case .critical:
+            return "flame.fill"
+        }
+    }
+    
+    private var averageStress: Double {
+        guard !model.stressHistory.isEmpty else { return 0 }
+        return (model.stressHistory.reduce(0, +) / Double(model.stressHistory.count)) * 100
+    }
+    
+    private var trendDirection: String {
+        guard model.stressHistory.count > 10 else { return "—" }
+        
+        let recent = model.stressHistory.suffix(5).reduce(0, +) / 5.0
+        let older = model.stressHistory.dropLast(5).suffix(5).reduce(0, +) / 5.0
+        
+        let change = recent - older
+        if abs(change) < 0.05 {
+            return "→"
+        } else if change > 0 {
+            return "↑"
+        } else {
+            return "↓"
+        }
+    }
+    
+    private var trendColor: Color {
+        let recent = model.stressHistory.suffix(5).reduce(0, +) / 5.0
+        let older = model.stressHistory.dropLast(5).suffix(5).reduce(0, +) / 5.0
+        let change = recent - older
+        
+        if abs(change) < 0.05 { return teal }
+        else if change > 0 { return coral }
+        else { return mint }
+    }
+    
+    private var stressInsight: String {
+        let stressScore = model.stressScore
+        
+        if stressScore < 0.3 {
+            return "🟢 Excellent composure! Your vitals indicate a calm, focused state. Keep maintaining this."
+        } else if stressScore < 0.6 {
+            return "🔵 Mild stress detected. Consider taking a slow breath or brief pause to reset."
+        } else if stressScore < 0.85 {
+            return "🟡 Elevated stress. Try the breathing pacer or take a moment away from the screen."
+        } else {
+            return "🔴 Critical stress detected. Activate breathing guidance immediately to help regulate your system."
         }
     }
 }
 
-// MARK: - Supporting Components
+// MARK: - Supporting Views
 
-struct VitalIndicator: View {
-    let icon: String
-    let label: String
-    let value: String
-    let unit: String
+struct StressGraph: View {
+    let data: [Double]
+    let color: Color
     
     var body: some View {
-        VStack(spacing: 4) {
-            HStack(spacing: 4) {
-                Image(systemName: icon)
-                    .font(.system(size: 11, weight: .semibold))
+        GeometryReader { geometry in
+            Canvas { context, size in
+                guard data.count > 1 else { return }
                 
-                Text(label)
-                    .font(.system(size: 9, weight: .semibold))
-            }
-            .foregroundStyle(.white.opacity(0.7))
-            
-            HStack(spacing: 2) {
-                Text(value)
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
+                // Create the path
+                var path = Path()
+                let width = size.width
+                let height = size.height
                 
-                if !unit.isEmpty {
-                    Text(unit)
-                        .font(.system(size: 8, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.5))
+                for (index, value) in data.enumerated() {
+                    let x = (width / CGFloat(data.count - 1)) * CGFloat(index)
+                    let y = height * (1.0 - CGFloat(value))
+                    
+                    if index == 0 {
+                        path.move(to: CGPoint(x: x, y: y))
+                    } else {
+                        path.addLine(to: CGPoint(x: x, y: y))
+                    }
+                }
+                
+                // Create fill path
+                var fillPath = path
+                fillPath.addLine(to: CGPoint(x: width, y: height))
+                fillPath.addLine(to: CGPoint(x: 0, y: height))
+                fillPath.closeSubpath()
+                
+                // Fill the area
+                context.fill(
+                    fillPath,
+                    with: .color(color.opacity(0.2))
+                )
+                
+                // Stroke the line
+                context.stroke(
+                    path,
+                    with: .color(color),
+                    lineWidth: 2.5
+                )
+                
+                // Draw latest data point indicator
+                if let lastValue = data.last {
+                    let x = width - 4
+                    let y = height * (1.0 - CGFloat(lastValue)) - 4
+                    
+                    var circlePoint = Path(ellipseIn: CGRect(x: x - 4, y: y - 4, width: 8, height: 8))
+                    context.fill(circlePoint, with: .color(color))
                 }
             }
         }
-        .frame(maxWidth: .infinity)
-        .padding(8)
-        .background(Color.white.opacity(0.08))
-        .cornerRadius(6)
+        .padding(.leading, 8)
     }
 }
 
-struct EmotionCard: View {
+struct StatsCard: View {
     let icon: String
     let label: String
-    let isActive: Bool
+    let value: String
     let color: Color
     
     var body: some View {
         VStack(spacing: 4) {
             Image(systemName: icon)
-                .font(.system(size: 16, weight: .semibold))
+                .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(color)
             
+            Text(value)
+                .font(.system(size: 13, weight: .bold, design: .rounded))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+            
             Text(label)
-                .font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(isActive ? .white : .white.opacity(0.6))
+                .font(.system(size: 8, weight: .medium))
+                .foregroundStyle(.white.opacity(0.6))
         }
         .frame(maxWidth: .infinity)
         .padding(8)
-        .background(isActive ? color.opacity(0.2) : Color.white.opacity(0.05))
+        .background(color.opacity(0.1))
         .cornerRadius(8)
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(isActive ? color.opacity(0.6) : Color.clear, lineWidth: 1.5)
-        )
     }
 }
