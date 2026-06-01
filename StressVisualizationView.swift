@@ -35,6 +35,19 @@ struct StressVisualizationView: View {
                 }
             }
             
+            // Stress Level Category
+            HStack {
+                Image(systemName: stressLevelIcon)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(stressColor)
+                
+                Text(model.stressLevel.description)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(stressColor)
+                
+                Spacer()
+            }
+            
             // Graph
             ZStack(alignment: .bottomLeading) {
                 // Background gradient
@@ -109,7 +122,7 @@ struct StressVisualizationView: View {
                 StatsCard(
                     icon: "line.3.horizontal",
                     label: "Average",
-                    value: String(format: "%.0f%%", (model.stressHistory.isEmpty ? 0 : model.stressHistory.reduce(0, +) / Double(model.stressHistory.count)) * 100),
+                    value: String(format: "%.0f%%", averageStress),
                     color: teal
                 )
                 
@@ -144,7 +157,7 @@ struct StressVisualizationView: View {
                 Text(stressInsight)
                     .font(.caption)
                     .foregroundStyle(.white.opacity(0.8))
-                    .lineLimit(3)
+                    .lineLimit(4)
             }
             .padding(12)
             .background(Color.white.opacity(0.06))
@@ -158,13 +171,34 @@ struct StressVisualizationView: View {
     }
     
     private var stressColor: Color {
-        if model.stressScore < 0.3 {
+        switch model.stressLevel {
+        case .calm:
             return mint
-        } else if model.stressScore < 0.6 {
+        case .moderate:
+            return teal
+        case .elevated:
             return amber
-        } else {
+        case .critical:
             return coral
         }
+    }
+    
+    private var stressLevelIcon: String {
+        switch model.stressLevel {
+        case .calm:
+            return "leaf.fill"
+        case .moderate:
+            return "ellipsis"
+        case .elevated:
+            return "exclamationmark"
+        case .critical:
+            return "flame.fill"
+        }
+    }
+    
+    private var averageStress: Double {
+        guard !model.stressHistory.isEmpty else { return 0 }
+        return (model.stressHistory.reduce(0, +) / Double(model.stressHistory.count)) * 100
     }
     
     private var trendDirection: String {
@@ -194,17 +228,16 @@ struct StressVisualizationView: View {
     }
     
     private var stressInsight: String {
-        let stressLevel = model.stressScore
-        let emotion = model.detectedEmotion
+        let stressScore = model.stressScore
         
-        if stressLevel < 0.3 {
-            return "Great composure! Your vitals indicate a calm, focused state. Keep maintaining this."
-        } else if stressLevel < 0.6 {
-            return "Mild stress detected. Consider taking a slow breath or brief pause to reset."
-        } else if stressLevel < 0.8 {
-            return "Elevated stress. Try the breathing pacer or take a moment away from the screen."
+        if stressScore < 0.3 {
+            return "🟢 Excellent composure! Your vitals indicate a calm, focused state. Keep maintaining this."
+        } else if stressScore < 0.6 {
+            return "🔵 Mild stress detected. Consider taking a slow breath or brief pause to reset."
+        } else if stressScore < 0.85 {
+            return "🟡 Elevated stress. Try the breathing pacer or take a moment away from the screen."
         } else {
-            return "High stress detected. Activate breathing guidance and focus on relaxation techniques."
+            return "🔴 Critical stress detected. Activate breathing guidance immediately to help regulate your system."
         }
     }
 }
@@ -217,51 +250,55 @@ struct StressGraph: View {
     
     var body: some View {
         GeometryReader { geometry in
-            ZStack(alignment: .bottomLeading) {
-                // Filled area under the curve
-                // ... inside StressGraph struct
-                Canvas { context, size in // Ensure both parameters are defined
-                    guard data.count > 1 else { return }
+            Canvas { context, size in
+                guard data.count > 1 else { return }
+                
+                // Create the path
+                var path = Path()
+                let width = size.width
+                let height = size.height
+                
+                for (index, value) in data.enumerated() {
+                    let x = (width / CGFloat(data.count - 1)) * CGFloat(index)
+                    let y = height * (1.0 - CGFloat(value))
                     
-                    var path = Path()
-                    let width = size.width
-                    let height = size.height
-                    
-                    // Draw the path using the 'size' argument provided by the Canvas
-                    for (index, value) in data.enumerated() {
-                        let x = (width / CGFloat(data.count - 1)) * CGFloat(index)
-                        let y = height * (1.0 - CGFloat(value))
-                        
-                        if index == 0 {
-                            path.move(to: CGPoint(x: x, y: y))
-                        } else {
-                            path.addLine(to: CGPoint(x: x, y: y))
-                        }
+                    if index == 0 {
+                        path.move(to: CGPoint(x: x, y: y))
+                    } else {
+                        path.addLine(to: CGPoint(x: x, y: y))
                     }
-                    
-                    // Create a fill path
-                    var fillPath = path
-                    fillPath.addLine(to: CGPoint(x: width, y: height))
-                    fillPath.addLine(to: CGPoint(x: 0, y: height))
-                    fillPath.closeSubpath()
-                    
-                    context.fill(fillPath, with: .color(color.opacity(0.2)))
-                    context.stroke(path, with: .color(color), lineWidth: 2.5)
                 }
                 
-                // Latest data point indicator
+                // Create fill path
+                var fillPath = path
+                fillPath.addLine(to: CGPoint(x: width, y: height))
+                fillPath.addLine(to: CGPoint(x: 0, y: height))
+                fillPath.closeSubpath()
+                
+                // Fill the area
+                context.fill(
+                    fillPath,
+                    with: .color(color.opacity(0.2))
+                )
+                
+                // Stroke the line
+                context.stroke(
+                    path,
+                    with: .color(color),
+                    lineWidth: 2.5
+                )
+                
+                // Draw latest data point indicator
                 if let lastValue = data.last {
-                    Circle()
-                        .fill(color)
-                        .frame(width: 8, height: 8)
-                        .offset(
-                            x: geometry.size.width - 4,
-                            y: geometry.size.height * (1.0 - CGFloat(lastValue)) - 4
-                        )
+                    let x = width - 4
+                    let y = height * (1.0 - CGFloat(lastValue)) - 4
+                    
+                    var circlePoint = Path(ellipseIn: CGRect(x: x - 4, y: y - 4, width: 8, height: 8))
+                    context.fill(circlePoint, with: .color(color))
                 }
             }
-            .padding(.leading, 4)
         }
+        .padding(.leading, 8)
     }
 }
 
